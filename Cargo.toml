@@ -13,6 +13,7 @@ build = "build.rs"
 [dependencies]
 hashbrown = "0.14"
 log = "0.4"
+downcast-rs="1"
 
 [profile.release]
 lto = true

@@ -14,9 +14,10 @@
 
 use crate::hostcalls;
 use crate::types::*;
+use downcast_rs::Downcast;
 use std::time::{Duration, SystemTime};
 
-pub trait Context {
+pub trait Context: Downcast {
     fn get_current_time(&self) -> SystemTime {
         hostcalls::get_current_time().unwrap()
     }

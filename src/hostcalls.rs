@@ -767,6 +767,7 @@ extern "C" {
 
 pub fn redis_init(
     upstream: &str,
+    username: Option<&[u8]>,
     password: Option<&[u8]>,
     timeout: Duration,
 ) -> Result<(), Status> {
@@ -774,8 +775,8 @@ pub fn redis_init(
         match proxy_redis_init(
             upstream.as_ptr(),
             upstream.len(),
-            null(),
-            0,
+            username.map_or(null(), |username| username.as_ptr()),
+            username.map_or(0, |username| username.len()),
             password.map_or(null(), |password| password.as_ptr()),
             password.map_or(0, |password| password.len()),
             timeout.as_millis() as u32,

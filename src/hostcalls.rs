@@ -21,6 +21,8 @@ extern "C" {
     fn proxy_log(level: LogLevel, message_data: *const u8, message_size: usize) -> Status;
 }
 
+pub type RedisCallbackFn = dyn FnOnce(u32, usize, usize);
+
 pub fn log(level: LogLevel, message: &str) -> Result<(), Status> {
     unsafe {
         match proxy_log(level, message.as_ptr(), message.len()) {
@@ -790,34 +792,28 @@ extern "C" {
     fn proxy_redis_call(
         upstream_data: *const u8,
         upstream_size: usize,
-        username_data: *const u8,
-        username_size: usize,
-        password_data: *const u8,
-        password_size: usize,
-        timeout: u32,
+        query_data: *const u8,
+        query_size: usize,
         return_token: *mut u32,
     ) -> Status;
 }
 
 pub fn dispatch_redis_call(
     upstream: &str,
-    password: Option<&[u8]>,
-    timeout: Duration,
+    query: &[u8],
+    call_fn: Box<RedisCallbackFn>,
 ) -> Result<u32, Status> {
     let mut return_token: u32 = 0;
     unsafe {
         match proxy_redis_call(
             upstream.as_ptr(),
             upstream.len(),
-            null(),
-            0,
-            password.map_or(null(), |password| password.as_ptr()),
-            password.map_or(0, |password| password.len()),
-            timeout.as_millis() as u32,
+            query.as_ptr(),
+            query.len(),
             &mut return_token,
         ) {
             Status::Ok => {
-                dispatcher::register_redis_callout(return_token);
+                dispatcher::register_redis_callout(return_token, call_fn);
                 Ok(return_token)
             }
             Status::BadArgument => Err(Status::BadArgument),

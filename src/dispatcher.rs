@@ -13,6 +13,7 @@
 // limitations under the License.
 
 use crate::hostcalls;
+use crate::hostcalls::RedisCallbackFn;
 use crate::traits::*;
 use crate::types::*;
 use hashbrown::HashMap;
@@ -47,8 +48,8 @@ pub(crate) fn register_grpc_stream(token_id: u32) {
     DISPATCHER.with(|dispatcher| dispatcher.register_grpc_stream(token_id));
 }
 
-pub(crate) fn register_redis_callout(token_id: u32) {
-    DISPATCHER.with(|dispatcher| dispatcher.register_redis_callout(token_id));
+pub(crate) fn register_redis_callout(token_id: u32, call_fn: Box<RedisCallbackFn>) {
+    DISPATCHER.with(|dispatcher| dispatcher.register_redis_callout(token_id, call_fn));
 }
 
 struct NoopRoot;
@@ -67,7 +68,7 @@ struct Dispatcher {
     callouts: RefCell<HashMap<u32, u32>>,
     grpc_callouts: RefCell<HashMap<u32, u32>>,
     grpc_streams: RefCell<HashMap<u32, u32>>,
-    redis_callouts: RefCell<HashMap<u32, u32>>,
+    redis_callouts: RefCell<HashMap<u32, (u32, Box<RedisCallbackFn>)>>,
 }
 
 impl Dispatcher {
@@ -132,11 +133,11 @@ impl Dispatcher {
         }
     }
 
-    fn register_redis_callout(&self, token_id: u32) {
+    fn register_redis_callout(&self, token_id: u32, call_fn: Box<RedisCallbackFn>) {
         if self
             .redis_callouts
             .borrow_mut()
-            .insert(token_id, self.active_id.get())
+            .insert(token_id, (self.active_id.get(), call_fn))
             .is_some()
         {
             panic!("duplicate token_id")
@@ -445,24 +446,14 @@ impl Dispatcher {
     }
 
     fn on_redis_call_response(&self, token_id: u32, status: usize, response_size: usize) {
-        let context_id = self
+        let (context_id, call_fn) = self
             .redis_callouts
             .borrow_mut()
             .remove(&token_id)
             .expect("invalid token_id");
-        if let Some(http_stream) = self.http_streams.borrow_mut().get_mut(&context_id) {
-            self.active_id.set(context_id);
-            hostcalls::set_effective_context(context_id).unwrap();
-            http_stream.on_redis_call_response(token_id, status, response_size)
-        } else if let Some(stream) = self.streams.borrow_mut().get_mut(&context_id) {
-            self.active_id.set(context_id);
-            hostcalls::set_effective_context(context_id).unwrap();
-            stream.on_redis_call_response(token_id, status, response_size)
-        } else if let Some(root) = self.roots.borrow_mut().get_mut(&context_id) {
-            self.active_id.set(context_id);
-            hostcalls::set_effective_context(context_id).unwrap();
-            root.on_redis_call_response(token_id, status, response_size)
-        }
+        self.active_id.set(context_id);
+        let _ = hostcalls::set_effective_context(context_id);
+        call_fn(token_id, status, response_size)
     }
 
     fn on_grpc_receive_initial_metadata(&self, token_id: u32, headers: u32) {

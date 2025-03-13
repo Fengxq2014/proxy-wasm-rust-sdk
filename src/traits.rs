@@ -550,4 +550,14 @@ pub trait HttpContext: Context {
     }
 
     fn on_log(&mut self) {}
+    
+    fn set_request_body_buffer_limit (&self, limit: u32) {
+        hostcalls::log(LogLevel::Info, &format!("{}{}", "SetRequestBodyBufferLimit:", limit));
+        hostcalls::set_property(vec!["set_decoder_buffer_limit"], Some(limit.to_string().as_bytes())).unwrap();
+    }
+
+    fn set_response_body_buffer_limit(&self, limit: u32) {
+        hostcalls::log(LogLevel::Info, &format!("{}{}", "SetResponseBodyBufferLimit:", limit));
+        hostcalls::set_property(vec!["set_encoder_buffer_limit"], Some(limit.to_string().as_bytes())).unwrap();
+    }
 }
